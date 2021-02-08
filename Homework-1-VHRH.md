@@ -126,6 +126,7 @@ fill up the tank in the near future in any case).
 overlap in the price distribution, gas stations at stoplights will more
 frequently charge slightly higher prices than their
 counterparts.](Homework-1-VHRH_files/figure-gfm/unnamed-chunk-5-1.png)
+
 Figure 4 suggests that this is indeed the case. Although the variability
 of prices of gas stations not situated at a stoplight is greater, we
 observe that the mode of said distribution is of US$1.8/Gallon, while
@@ -140,12 +141,15 @@ incurred to search for alternatives make no sense if different brands of
 gasoline are considered relatively good substitutes; and second, because
 there is the possibility that one is running very low on gas, so the
 uncertainty of being able to reach another gas station is eliminated if
-we simply fill-up the tank at the closer station. ![Gas stations near
+we simply fill-up the tank at the closer station. 
+
+![Gas stations near
 highways charge more for gas: the increased accessibility means that gas
 stations of all brands consistently charge more for gasoline when the
 station has direct highway
-access](Homework-1-VHRH_files/figure-gfm/unnamed-chunk-6-1.png) Figure 5
-shows that this is indeed the case for every brand, since prices for gas
+access](Homework-1-VHRH_files/figure-gfm/unnamed-chunk-6-1.png) 
+
+Figure 5 shows that this is indeed the case for every brand, since prices for gas
 stations near highways are consistently higher.
 
 # 2. Data visualization: a bike share network
@@ -230,35 +234,33 @@ increases from less than 5 minutes at 5 a.m., to almost half an hour at
 
 ![The median delay time increases from approximately 5 to 30 minutes
 throughout the
-day](Homework-1-VHRH_files/figure-gfm/unnamed-chunk-14-1.png) It could
-be that these times differ by airline. In the data, there are 16 unique
+day](Homework-1-VHRH_files/figure-gfm/unnamed-chunk-14-1.png) 
+
+It could be that these times differ by airline. In the data, there are 16 unique
 carriers; however, Table 1 shows that the most frequent flights are by
 far American Airlines (AA) and Southwest Airlines (WN), so we will focus
 on delay times of these to carriers.
 
-    ## ### Frequencies  
-    ## #### ABIA$UniqueCarrier  
-    ## **Type:** Character  
-    ## 
-    ## |    &nbsp; |  Freq |      % |
-    ## |----------:|------:|-------:|
-    ## |    **9E** |  2549 |   2.57 |
-    ## |    **AA** | 19995 |  20.14 |
-    ## |    **B6** |  4798 |   4.83 |
-    ## |    **CO** |  9230 |   9.30 |
-    ## |    **DL** |  2134 |   2.15 |
-    ## |    **EV** |   825 |   0.83 |
-    ## |    **F9** |  2132 |   2.15 |
-    ## |    **MQ** |  2663 |   2.68 |
-    ## |    **NW** |   121 |   0.12 |
-    ## |    **OH** |  2986 |   3.01 |
-    ## |    **OO** |  4015 |   4.04 |
-    ## |    **UA** |  1866 |   1.88 |
-    ## |    **US** |  1458 |   1.47 |
-    ## |    **WN** | 34876 |  35.14 |
-    ## |    **XE** |  4618 |   4.65 |
-    ## |    **YV** |  4994 |   5.03 |
-    ## | **Total** | 99260 | 100.00 |
+    
+    |    &nbsp; |  Freq |      % |
+    |----------:|------:|-------:|
+    |    **9E** |  2549 |   2.57 |
+    |    **AA** | 19995 |  20.14 |
+    |    **B6** |  4798 |   4.83 |
+    |    **CO** |  9230 |   9.30 |
+    |    **DL** |  2134 |   2.15 |
+    |    **EV** |   825 |   0.83 |
+    |    **F9** |  2132 |   2.15 |
+    |    **MQ** |  2663 |   2.68 |
+    |    **NW** |   121 |   0.12 |
+    |    **OH** |  2986 |   3.01 |
+    |    **OO** |  4015 |   4.04 |
+    |    **UA** |  1866 |   1.88 |
+    |    **US** |  1458 |   1.47 |
+    |    **WN** | 34876 |  35.14 |
+    |    **XE** |  4618 |   4.65 |
+    |    **YV** |  4994 |   5.03 |
+    | **Total** | 99260 | 100.00 |
 
 Figure 12 confirms that this trend repeats itself for the two principal
 airlines; but that delay times are consistently lower for Southwest
