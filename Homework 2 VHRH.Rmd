@@ -1,0 +1,677 @@
+---
+title: "Homework No. 2"
+author: "Victor H. Ramirez, EID vhr267"
+date: "March 12, 2021"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Data visualization
+
+```{r include = F, echo = F, message = F}
+rm(list=ls())
+library(tidyverse, quietly = T)
+library(ggplot2, quietly = T)
+capmetro_UT = read.csv("https://raw.githubusercontent.com/jgscott/ECO395M/master/data/capmetro_UT.csv", header = T)
+
+# Recode the categorical variables in sensible, rather than alphabetical, order
+capmetro_UT = mutate(capmetro_UT,
+               day_of_week = factor(day_of_week,
+                 levels=c("Mon", "Tue", "Wed","Thu", "Fri", "Sat", "Sun")),
+               month = factor(month,
+                 levels=c("Sep", "Oct","Nov")))
+
+# Average boarding by hour of the day, day of the week, and month
+d0 = capmetro_UT %>%
+  group_by(month, day_of_week, hour_of_day) %>%
+  summarize(average_boarding = mean(boarding, na.rm = T))
+
+```
+
+## 1.1 UT Capital Metro average boarding frequencies
+
+```{r echo = F, message = F}
+# Facet plot
+ggplot(data = d0) +
+  geom_line(aes(x = hour_of_day, y = average_boarding, color = month)) +
+  facet_wrap(~ day_of_week)
+```
+
+***Figure 1.1**. Boarding frequencies of the Capital Metro in the UT Austin area: Boarding frequencies differ significantly on weekdays from the weekend, which tend to be much lower. During the weekdays, peak hours occur at around 4:00 p.m., when students and workers leave the Campus. In Mondays of September and Fridays of November tend to display lower boarding averages, possible because of the beginning-end of the semester, some Mondays in September and Fridays in November would be left out of the calculation, bringing down the average estimates.*
+
+## 1.2 Effect of temperature on UT Capital Metro boarding frequency
+
+```{r echo = F, message = F}
+d1 = capmetro_UT %>%
+  group_by(timestamp,weekend) #%>%
+  #summarise(Av_Temp = mean(temperature), Av_Boarding = mean(boarding))
+
+ggplot(data = d1) +
+  geom_point(mapping = aes(x = temperature, y = boarding, color = weekend)) +
+  facet_wrap(~ hour_of_day)
+
+
+```
+
+***Figure 1.2**. Effect of the temperature on boarding frequencies: even though one could assume that the temperature (as a proxy of weather conditions) would have an incidence on boarding frequencies, a relationship between these two variables seems to be spurious as it picks on the effect of the time of the day. We may observe this in that, for a given specific time frame (one hour), temperature's effect is negligible as the scatter plots do not show clear trends, either for the weekday or for the weekends.*
+
+# 2. Saratoga house prices
+
+The objective of this section is to examine out-of-sample forecasting performance for linear (parametric) model and k-Nearest Neighbors (KNN) models (non-parametric).
+
+When selecting a class of model, there is a trade-off between tractability (how simple is the model employed) and flexibility (how well the model may capture non-linearities and other irregularities in the data). This is akin to selecting between the "how good" and the "why" of the forecast. Thus, considerations expand in many cases extend beyond the mere forecast performance of the selected method.
+
+In this case, we are interested in forecasting Saratoga house prices on basis of a series of characteristics of the house (features). There are 16 features in total. To prepare the data, I start by encoding categorical and logical variables by assigning them an integer value. Next, to account for the fact that these features take values that vary considerably between them, I perform normalizations of the data by substracting the variable's estimation set mean and dividing by it's standard deviation; thus centering them on zero and expressing their values as number of standard deviations.
+
+## 2.3 Forecast performance
+
+```{r echo = F, message = F, warning = F}
+rm(list=ls())
+library(tidyverse, quietly = T)
+library(ggplot2, quietly = T)
+library(modelr, quietly = T)
+library(rsample, quietly = T)
+library(mosaic, quietly = T)
+library(caret, quietly = T)
+data(SaratogaHouses)
+
+# Set seed
+set.rseed(196) # Since I want results to reproducible for control
+
+# Here I reorder the row indexes randomly and partition them in 10 sets of
+# approximately the same size, in order to construct train and split tests with
+# them
+
+N.size    = dim(SaratogaHouses)[1]
+N.vars    = dim(SaratogaHouses)[2]
+K.folds   = 10
+Fold.size = round(N.size/K.folds,0)
+rnd.order = sample(x = 1:N.size,size = N.size, replace = F)
+folds.mat = matrix(data = rnd.order[c(1:((K.folds-1)*Fold.size))],nrow = Fold.size,ncol = (K.folds-1),byrow = F)
+
+rmse.mat  = matrix(data = NA, nrow = K.folds, ncol = N.vars)
+rmnd.size = N.size-(K.folds-1)*Fold.size
+rmnd.vec  = rnd.order[(N.size-rmnd.size+1):N.size]
+
+# Code categorical/logical variables
+temp.data = SaratogaHouses
+temp.data[,'heating'] = as.numeric(temp.data[,'heating'])
+temp.data[,'fuel']    = as.numeric(temp.data[,'fuel'])
+temp.data[,'sewer']   = as.numeric(temp.data[,'sewer'])
+temp.data[,'waterfront'] = as.numeric(temp.data[,'waterfront'])
+temp.data[,'newConstruction'] = as.numeric(temp.data[,'newConstruction'])
+temp.data[,'centralAir'] = as.numeric(temp.data[,'centralAir'])
+
+# Main testing loop of the models
+for(k in 1:K.folds){
+  # Train/test split with K-folds
+  if(k == K.folds){
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    # Split
+    saratoga_train = temp.data[-rmnd.vec,]
+    saratoga_test  = temp.data[rmnd.vec,]
+  }else{
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    #Split
+    saratoga_train = temp.data[-folds.mat[k,],]
+    saratoga_test  = temp.data[folds.mat[k,],]
+  }
+  
+  # Baseline linear model
+  lm_baseline    = lm(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction, data=saratoga_train)
+  rmse.mat[k,1]  = rmse(lm_baseline, saratoga_test)
+  
+  # Single-variable models
+  lm.1  = lm(price ~ lotSize, data = saratoga_train)
+  lm.2  = lm(price ~ age, data = saratoga_train)
+  lm.3  = lm(price ~ landValue, data = saratoga_train)
+  lm.4  = lm(price ~ livingArea, data = saratoga_train)
+  lm.5  = lm(price ~ pctCollege, data = saratoga_train)
+  lm.6  = lm(price ~ bedrooms, data = saratoga_train)
+  lm.7  = lm(price ~ fireplaces, data = saratoga_train)
+  lm.8  = lm(price ~ bathrooms, data = saratoga_train)
+  lm.9  = lm(price ~ rooms, data = saratoga_train)
+  lm.10 = lm(price ~ heating, data = saratoga_train)
+  lm.11 = lm(price ~ fuel, data = saratoga_train)
+  lm.12 = lm(price ~ sewer, data = saratoga_train)
+  lm.13 = lm(price ~ waterfront, data = saratoga_train)
+  lm.14 = lm(price ~ newConstruction, data = saratoga_train)
+  lm.15 = lm(price ~ centralAir, data = saratoga_train)
+ 
+  rmse.mat[k,2] = rmse(lm.1, saratoga_test)
+  rmse.mat[k,3] = rmse(lm.2, saratoga_test)
+  rmse.mat[k,4] = rmse(lm.3, saratoga_test)
+  rmse.mat[k,5] = rmse(lm.4, saratoga_test)
+  rmse.mat[k,6] = rmse(lm.5, saratoga_test)
+  rmse.mat[k,7] = rmse(lm.6, saratoga_test)
+  rmse.mat[k,8] = rmse(lm.7, saratoga_test)
+  rmse.mat[k,9] = rmse(lm.8, saratoga_test)
+  rmse.mat[k,10] = rmse(lm.9, saratoga_test)
+  rmse.mat[k,11] = rmse(lm.10, saratoga_test)
+  rmse.mat[k,12] = rmse(lm.11, saratoga_test)
+  rmse.mat[k,13] = rmse(lm.12, saratoga_test)
+  rmse.mat[k,14] = rmse(lm.13, saratoga_test)
+  rmse.mat[k,15] = rmse(lm.14, saratoga_test)
+  rmse.mat[k,16] = rmse(lm.15, saratoga_test)
+}
+
+temp.rmse = as.data.frame(rmse.mat)
+temp.names = c('Baseline lm',names(saratoga_train)[-1])
+
+temp.rmse = cbind(as.matrix(as.numeric(rmse.mat)),
+                  as.matrix(rep(NA,16*10)))
+for(i in 1:16){
+  temp.rmse[c(((i-1)*10+1):(i*10)),2] = temp.names[i]
+}
+temp.rmse = as.data.frame(temp.rmse)
+colnames(temp.rmse) = c('RMSE','Model')
+temp.rmse$RMSE = as.numeric(temp.rmse$RMSE)
+d.3 = mutate(temp.rmse, factor(Model,
+                               levels = temp.names))
+
+```
+
+To asses the performance of the forecast, we employ the Root of the Mean Squared Error (RMSE) of out of sample forecasts. The RMSE of all models is compared to a Baseline Model (BM)
+
+The out-of-sample RMSE is averaged through cross-validation.
+
+## 2.1 Linear models
+
+First, I examine the predictive power of the individual variables, and compare them to the baseline model. To this end, I compare the cross-validated RMSE of univariate models that include these features, over 10 folds. The distributions of the RMSE obtained for the folds are presented below.
+
+```{r echo = F}
+# Out of sample performance of univariate models
+ggplot(d.3) +
+  geom_boxplot(aes(x = factor(Model,levels = temp.names), y = RMSE), fill=blues9[4]) +
+  labs(x = 'Features') +
+  theme(axis.text.x = element_text(angle = 90))
+
+```
+
+***Figures 2.1**. The best individual predictors for Saratoga house prices are living area, bathrooms, rooms and land value. An univariate model that includes living area performs closely to the baseline model in out-of-sample predictions.*
+
+This exercise indicates that living area, number of bathrooms, number of rooms and land value are the best predictors of house prices in Saratoga. I combine these variables on a model, which I will call Challenge Model (CM) and compare its forecast performance with the BM and the best univariate model (the one with living area as regressor). This is because, as a principle, we try to mantain a parsimonious model; thus the inclussion of all of these variables is adequate if the forecast performance increases.
+
+```{r echo = F}
+# Set seed
+set.rseed(196)
+rmse.mat  = matrix(data = NA, nrow = K.folds, ncol = 3)
+
+# Main testing loop of the models
+for(k in 1:K.folds){
+  # Train/test split with K-folds
+  if(k == K.folds){
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    # Split
+    saratoga_train = temp.data[-rmnd.vec,]
+    saratoga_test  = temp.data[rmnd.vec,]
+  }else{
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    #Split
+    saratoga_train = temp.data[-folds.mat[k,],]
+    saratoga_test  = temp.data[folds.mat[k,],]
+  }
+  
+  # Baseline linear model
+  lm_baseline    = lm(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction, data=saratoga_train)
+  rmse.mat[k,1]  = rmse(lm_baseline, saratoga_test)
+  
+  # Best univariate model
+  lm_univariate  = lm(price ~ livingArea, saratoga_train)
+  rmse.mat[k,2]  = rmse(lm_univariate, saratoga_test)
+  
+  # Challenge model
+  lm_challenge = lm(price ~ livingArea + bathrooms + rooms + landValue, saratoga_train)
+  rmse.mat[k,3] = rmse(lm_challenge, saratoga_test)
+}
+
+temp.rmse = as.data.frame(rmse.mat)
+temp.names = c('Baseline lm','Best univariate','Challenge')
+
+temp.rmse = cbind(as.matrix(as.numeric(rmse.mat)),
+                  as.matrix(rep(NA,3*10)))
+for(i in 1:3){
+  temp.rmse[c(((i-1)*10+1):(i*10)),2] = temp.names[i]
+}
+temp.rmse = as.data.frame(temp.rmse)
+colnames(temp.rmse) = c('RMSE','Model')
+temp.rmse$RMSE = as.numeric(temp.rmse$RMSE)
+d.3 = mutate(temp.rmse, factor(Model,
+                               levels = temp.names))
+
+# Out of sample performance of univariate models
+ggplot(d.3) +
+  geom_boxplot(aes(x = factor(Model,levels = temp.names), y = RMSE), fill=blues9[4]) +
+  labs(x = 'Model')
+
+```
+
+***Figure 2.2**. A model that includes the 4 best indivdual predictors outperforms both the baseline and the best univariate model.*
+
+I continue to further examine if the inclusion of some interactions may better performance. As a modeling principle, all variables involved in an interaction are also included in the model. The best alternative that I find incorporates an interaction between number of rooms and a logical variable which indicates if this is a new construction.
+
+```{r echo = F}
+# Set seed
+set.rseed(196)
+rmse.mat  = matrix(data = NA, nrow = K.folds, ncol = 3)
+
+# Main testing loop of the models
+for(k in 1:K.folds){
+  # Train/test split with K-folds
+  if(k == K.folds){
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    # Split
+    saratoga_train = temp.data[-rmnd.vec,]
+    saratoga_test  = temp.data[rmnd.vec,]
+  }else{
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    #Split
+    saratoga_train = temp.data[-folds.mat[k,],]
+    saratoga_test  = temp.data[folds.mat[k,],]
+  }
+  
+  # Baseline linear model
+  lm_baseline    = lm(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction, data=saratoga_train)
+  rmse.mat[k,1]  = rmse(lm_baseline, saratoga_test)
+  
+  # Best univariate model
+  lm_univariate  = lm(price ~ livingArea, saratoga_train)
+  rmse.mat[k,2]  = rmse(lm_univariate, saratoga_test)
+  
+  # Challenge model
+  lm_challenge = lm(price ~ livingArea + bathrooms + rooms + landValue +
+                      newConstruction + rooms*newConstruction, saratoga_train)
+  rmse.mat[k,3] = rmse(lm_challenge, saratoga_test)
+}
+
+temp.rmse = as.data.frame(rmse.mat)
+temp.names = c('Baseline lm','Best univariate','Challenge')
+
+temp.rmse = cbind(as.matrix(as.numeric(rmse.mat)),
+                  as.matrix(rep(NA,3*10)))
+for(i in 1:3){
+  temp.rmse[c(((i-1)*10+1):(i*10)),2] = temp.names[i]
+}
+temp.rmse = as.data.frame(temp.rmse)
+colnames(temp.rmse) = c('RMSE','Model')
+temp.rmse$RMSE = as.numeric(temp.rmse$RMSE)
+d.3 = mutate(temp.rmse, factor(Model,
+                               levels = temp.names))
+
+# Out of sample performance of univariate models
+ggplot(d.3) +
+  geom_boxplot(aes(x = factor(Model,levels = temp.names), y = RMSE), fill=blues9[4]) +
+  labs(x = 'Model')
+
+
+```
+
+***Figure 2.3**. The performance of the model is marginally improved if we include interactions between an indicator variable of new construction and the number of rooms.*
+
+The incorporation of the interaction variable increased the forecast performance. This makes sense to me, since there is a tendency to reduce the number of rooms in new constructions (apartments, studio apartments, etc.), so it makes sense that in recent times, the number of rooms should impact more profoundly the price of houses than in the past. This will be my Best Linear Model.
+
+## 2.2 KNN models
+
+These models are very flexible but there are also an very large number of combinations of features and parameters over which we must make decisons (the combinations of features to be included and the value of the k-parameter of the model). To simplify things, and to be able to better compare the out-of-sample forecasting capacity of the two methodologies, I restrict to the three models of the last section: the baseline, the best univariate and the best linear model.
+
+Next, to determine the optimal k-parameter, I explore the cross-validated forecasting performance for values that range from 5 to 400 (as permitted by the data).
+
+```{r echo = F}
+# Best KNN model
+# Set seed
+set.rseed(196)
+kk.vec = seq(5, 400, by = 5)
+rmse.mat = array(data = NA, dim = c(length(kk.vec),10,3))
+
+# Main testing loop of the models
+for(k in 1:K.folds){
+  # Train/test split with K-folds
+  if(k == K.folds){
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    # Split
+    saratoga_train = temp.data[-rmnd.vec,]
+    saratoga_test  = temp.data[rmnd.vec,]
+  }else{
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    #Split
+    saratoga_train = temp.data[-folds.mat[k,],]
+    saratoga_test  = temp.data[folds.mat[k,],]
+  }
+  
+  for(ii in 1:length(kk.vec)){
+    # print(ii)
+    # Baseline KNN model
+    knn_baseline  = knnreg(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction, data=saratoga_train, k = kk.vec[ii])
+    rmse.mat[ii,k,1] = modelr::rmse(knn_baseline, saratoga_test)
+    
+    # KNN univariate model
+    knn_univariate = knnreg(price ~ livingArea, saratoga_train, k = kk.vec[ii])
+    rmse.mat[ii,k,2]  = modelr::rmse(knn_univariate, saratoga_test)
+    
+    # KNN Challenge model
+    knn_challenge = knnreg(price ~ livingArea + bathrooms + rooms + landValue +
+                        newConstruction + rooms*newConstruction + landValue*newConstruction, saratoga_train, k = kk.vec[ii])
+    rmse.mat[ii,k,3] = modelr::rmse(knn_challenge, saratoga_test)
+  }
+}
+
+temp.rmse.1 = cbind(as.matrix(as.numeric(rmse.mat[,,1])),as.matrix(rep(kk.vec,10)),
+                    as.matrix(rep('Baseline',length(kk.vec)*10)))
+temp.rmse.2 = cbind(as.matrix(as.numeric(rmse.mat[,,2])),as.matrix(rep(kk.vec,10)),
+                    as.matrix(rep('Univariate',length(kk.vec)*10)))
+temp.rmse.3 = cbind(as.matrix(as.numeric(rmse.mat[,,3])),as.matrix(rep(kk.vec,10)),
+                    as.matrix(rep('Challenge',length(kk.vec)*10)))
+temp.rmse = rbind(temp.rmse.1,temp.rmse.2,temp.rmse.3)
+temp.rmse = as.data.frame(temp.rmse)
+colnames(temp.rmse) = c('RMSE','k','Model')
+temp.rmse$RMSE = as.numeric(temp.rmse$RMSE)
+temp.rmse$k = as.factor(temp.rmse$k)
+
+d.4 = temp.rmse
+
+ggplot(temp.rmse) +
+  geom_boxplot(aes(x = factor(k, levels = kk.vec), y = RMSE, fill = Model)) +
+  facet_wrap(~ Model,nrow = 3) +
+  scale_y_log10() +
+  scale_x_discrete(breaks = seq(0,400, by = 50)) +
+  labs(x = 'k factor')
+
+```
+
+***Figure 2.4**. The best performing KNN model has the specification of the best linear model and a k factor with value of 15.*
+
+I find that the best linear model especification (call it Best KNN Model) with a k=15 outperforms the other two especifications of KNN models.
+
+```{r echo = F}
+# Set seed
+set.rseed(196)
+rmse.mat  = matrix(data = NA, nrow = K.folds, ncol = 3)
+
+# Main testing loop of the models
+for(k in 1:K.folds){
+  # Train/test split with K-folds
+  if(k == K.folds){
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    # Split
+    saratoga_train = temp.data[-rmnd.vec,]
+    saratoga_test  = temp.data[rmnd.vec,]
+  }else{
+    # Normalize features
+    for(i in 2:N.vars){ 
+      temp.data[,i] = (temp.data[,i]-mean(temp.data[-rmnd.vec,i]))/sd(temp.data[-rmnd.vec,i])
+    }
+    #Split
+    saratoga_train = temp.data[-folds.mat[k,],]
+    saratoga_test  = temp.data[folds.mat[k,],]
+  }
+  
+  # Baseline linear model
+  lm_baseline    = lm(price ~ . - pctCollege - sewer - waterfront - landValue - newConstruction, data=saratoga_train)
+  rmse.mat[k,1]  = rmse(lm_baseline, saratoga_test)
+  
+  # Best linear model
+  lm_challenge = lm(price ~ livingArea + bathrooms + rooms + landValue +
+                      newConstruction + rooms*newConstruction, saratoga_train)
+  rmse.mat[k,2] = rmse(lm_challenge, saratoga_test)
+  
+  # Best KNN model
+  knn_challenge = knnreg(price ~ livingArea + bathrooms + rooms + landValue +
+                           newConstruction + rooms*newConstruction + landValue*newConstruction, saratoga_train, k = 15)
+  rmse.mat[k,3] = modelr::rmse(knn_challenge, saratoga_test)
+  
+}
+
+temp.rmse = as.data.frame(rmse.mat)
+temp.names = c('Baseline lm','Best lm','Best KNN')
+
+temp.rmse = cbind(as.matrix(as.numeric(rmse.mat)),
+                  as.matrix(rep(NA,3*10)))
+for(i in 1:3){
+  temp.rmse[c(((i-1)*10+1):(i*10)),2] = temp.names[i]
+}
+temp.rmse = as.data.frame(temp.rmse)
+colnames(temp.rmse) = c('RMSE','Model')
+temp.rmse$RMSE = as.numeric(temp.rmse$RMSE)
+d.3 = mutate(temp.rmse, factor(Model,
+                               levels = temp.names))
+
+# Out of sample performance of univariate models
+ggplot(d.3) +
+  geom_boxplot(aes(x = factor(Model,levels = temp.names), y = RMSE), fill=blues9[4]) +
+  labs(x = 'Model')
+
+```
+
+***Figure 2.5**. The KNN model outperforms on average the best linear model, although the RMSE is more variable.*
+
+Further, I find that the cross-validated RMSE of the KNN model outperforms the baseline and the best linear model; however, there is more variability in the RMSE for the KNN than for the best linear model.
+
+# 3. Classification and retrospective sampling
+
+```{r echo = F}
+rm(list=ls())
+german_credit = read.csv('https://raw.githubusercontent.com/jgscott/ECO395M/master/data/german_credit.csv', header = T)
+
+# History effect on default probability
+d.0 = german_credit %>%
+  group_by(history) %>%
+  summarize(default_prob = sum(Default == 1)/n())
+
+```
+
+In this problem, we examine the potential effects of retrospective sampling on model estimates. The problem asks us to look at a German's bank defaults data, in order to develop a logit model to predict when a particular loan will go on default. However, because of the low frequency of default occurrences, a sample of defaulted loans was selected and matched with other loans with similar characteristics. This procedure, however, has a very strong counterintuitive effect on the estimated coefficients, as will be discussed.
+
+To begin, we may observe in the figure below the fraction of defaulted loans grouped by the debtor credit history.
+
+```{r echo = F}
+# Barplot
+ggplot(d.0) +
+  geom_col(aes(x = history, y = default_prob, fill = history))
+
+```
+
+***Figure 3.1**. In the sample, the probability of default is reduced as the debtor's credit history worsens, result that is counterintuitive.*
+
+This is also reflected in the model estimated parameter's. According to the model, a person with poor credit history reduces her odds of entering on default by a factor of 0.78, approximately, with respect to a person with good credit; and the person with terrible credit history reduces its probability by a factor of 0.68.
+
+```{r echo = F}
+# Logistic model
+default_log = glm(Default ~ duration + amount + installment + age + history + purpose + foreign, data = german_credit)
+coef(default_log) %>% round(2)
+```
+
+***Table 1**. Logit model estimated coefficients. According to the model, the probability of default increases as the quality of the credit history of the person is greater.*
+
+As discussed above, these results are likely consequence of inadequate sampling. Because defaults are so rare, It is also very likely that persons with poor or terrible credit history are also very rare. This means that, if the correlation of this variable with default is not too big, when we take a random sample of defaulted credits, it is very likely that good credit histories will be overrepresentated, and thus there will be an appearance of a positive relationship between credit history quality and default probability, which would be wrong.
+
+# 4. Children and hotel reservations
+
+```{r echo = F, message = F, warning = F}
+rm(list=ls())
+library(tidyverse, quietly = T)
+library(ggplot2, quietly = T)
+library(rsample, quietly = T)
+library(caret, quietly = T)
+library(scales, quietly = T)
+library(summarytools, quietly = T)
+library(mosaic, quietly = T)
+# Data
+hotels_dev = read.csv('https://raw.githubusercontent.com/jgscott/ECO395M/master/data/hotels_dev.csv', header = T)
+hotels_val = read.csv('https://raw.githubusercontent.com/jgscott/ECO395M/master/data/hotels_val.csv', header = T)
+
+# Prepare folds for cross-validation
+K = 100
+N = dim(hotels_dev)[1]
+fold.size = N/K
+
+set.rseed(196)
+rndorder.vec = sample(c(1:N), size = N, replace = F)
+fold.mat = matrix(data = rndorder.vec, nrow = fold.size, ncol = K)
+rmse.mat = matrix(data = NA, nrow = K, ncol = 3)
+
+# Main loop
+for(k in 1:K){
+  # print(k)
+  # Split
+  hotels_dev_train = hotels_dev[-fold.mat[,k], ]
+  hotels_dev_test  = hotels_dev[ fold.mat[,k], ]
+  
+  # Models
+  bl1.mod = lm(children ~ market_segment + adults + customer_type + 
+                 is_repeated_guest, data = hotels_dev_train)
+  bl2.mod = lm(children ~ . - arrival_date, data = hotels_dev_train)
+  #new.mod = lm(children ~ stays_in_weekend_nights + adults + 
+  #               market_segment + reserved_room_type*assigned_room_type +
+  #               average_daily_rate + required_car_parking_spaces
+  #             , data = hotels_dev_train)
+  
+  new.mod = lm(children ~ stays_in_weekend_nights + adults + 
+                 market_segment + reserved_room_type*assigned_room_type +
+                 average_daily_rate + required_car_parking_spaces
+               , data = hotels_dev_train)
+  
+  #new.mod = bl1.mod
+  
+  
+  rmse.mat[k,1] = modelr::rmse(bl1.mod, data = hotels_dev_test)
+  rmse.mat[k,2] = modelr::rmse(bl2.mod, data = hotels_dev_test)
+  rmse.mat[k,3] = modelr::rmse(new.mod, data = hotels_dev_test)
+  
+}
+
+# Dataframe for results
+temp.rmse = cbind(as.matrix(as.numeric(rmse.mat)),
+                  as.matrix(c(rep('Baseline 1',K),rep('Baseline 2',K),
+                              rep('Best Linear Model',K))))
+
+temp.rmse = as.data.frame(temp.rmse)
+colnames(temp.rmse) = c('RMSE','Model')
+temp.rmse$RMSE = as.numeric(temp.rmse$RMSE)
+```
+
+The objective of this section is to be able to adequately estimate and validate the adequacy of a classification model, in order to be able to forecast whether a particular booking will include children, given a set of accompanying features. It is often unknown whether a child will be included in the guests of a reservation until the moment of the check-in, it is very valuable to be able to predict this event, as it impacts on costs.
+
+## 4.1 Model building
+
+In this section, a linear model is developed to forecast the probability that a booking will include a child. Two models are employed as baseline, and performance is assessed through cross-validation with 100 folds (since the sample size allows it). The figure below shows the distribution of the individual RMSE estimations for each of the folds through box plots.
+
+```{r echo = F}
+ggplot(temp.rmse) +
+  geom_boxplot(aes(x = factor(Model, 
+                              levels = c('Baseline 1', 'Baseline 2',
+                                         'Best Linear Model')),
+                   y = RMSE), fill = blues9[4]) +
+  labs(x = 'Model')
+
+```
+
+***Figure 4.1**. The Best Linear Model outperforms the Baseline Model 1, but not the Baseline 2.*
+
+The figure 4.1 above shows that I am not able to outperform the Baseline 2 model in terms of RMSE. The model, however is relatively simpler and the mean RMSE difference is not significant, so I continue to work with this model.
+
+## 4.2 Model validation
+
+To examine the adequacy of the Best Linear Model's (BLM) forecasts, I construct the ROC curve with another data set, shown below in Figure 4.2. This figure shows a parametric curve that represents the relation between ratios of true positives and false positives, for a given discrimination threshold. Since in reality the forecast of the linear model consists of a real number, we must set a threshold to help us decide whether a particular number must be understood as a forecast of a booking with children. This figure helps us to comprehend, thus, the effect of the threshold on the error ratios.
+
+```{r echo = F, message = F, warning = F}
+# Model validation 1
+
+th.vec = seq(0.1,0.9,by = 0.1)
+ROC.mat = matrix(data = NA, nrow = length(th.vec), ncol = 2)
+for(th in 1:length(th.vec)){
+  phat.val = predict(new.mod, hotels_val)
+  yhat.val = ifelse(phat.val > th.vec[th], 1, 0)
+  confusion.val = table(y = hotels_val$children, yhat = yhat.val)
+  TPR.val = confusion.val[2,2]/sum(confusion.val[2,])
+  FPR.val = confusion.val[1,2]/sum(confusion.val[,2])
+  ROC.mat[th,1] = TPR.val
+  ROC.mat[th,2] = FPR.val
+}
+temp.roc = cbind(as.matrix(as.numeric(ROC.mat)),
+                 as.matrix(c(rep('TPR',length(th.vec)),
+                             rep('FPR',length(th.vec)))))
+temp.roc = as.data.frame(temp.roc)
+colnames(temp.roc) = c('Value','Error Rate')
+temp.roc$Value = as.numeric(temp.roc$Value)
+
+temp.roc.2 = as.data.frame(ROC.mat)
+colnames(temp.roc.2) = c('TPR','FPR')
+
+ggplot(temp.roc.2) +
+  geom_line(mapping = aes(x = FPR, y = TPR), col = blues9[7])
+
+```
+
+***Figure 4.2**. The ROC of the best linear model shows that the model usually fails close to 50% of the time when predicting a booking with children, for any threshold probability. The best performance comes with a threshold of about 0.4.*
+
+The Figure 4.2 above wanders closely to a 45° line that passes through the origin. This means that the model performs similarly to a random guess of the result of a coin flip. In general, we would want that the ROC curve be as up and to the left as possible, since then the ratio of true positives for a given ratio of false positives would be greater.
+
+## 4.2 Model validation
+
+The effect of the model performance is also evaluated on basis of the predicted number of bookings with children. The evaluation data set is partitioned on 20 folds of about the same size and with a number of entries similar to that of a busy weekend. Then, the number of expected bookings with children is forecasted with the model and a probability threshold of about 0.4. The number of predicted bookings with children is then compared with the actual number of bookings with children for the same fold. A ratio is constructed, such that if the ratio is less than 1 it means that we have underestimated the number of bookings with children, and vice versa. A distribution plot for the ratios of the 20 folds is presented below.
+
+```{r echo = F, message = F, warning = F}
+# Model validation 2
+K = 20
+N = dim(hotels_val)[1]
+fold.size = round(N/K)
+set.rseed(196)
+rndorder.vec = sample(c(1:N), size = N, replace = F)
+fold.mat = matrix(data = rndorder.vec, nrow = fold.size, ncol = (K-1))
+rmse.mat = matrix(data = NA, nrow = K, ncol = 3)
+last.fold = tail(rndorder.vec, (N-(K-1)*fold.size))
+th = 0.4
+child.mat = matrix(NA,K,2)
+for(k in 1:K){
+  if(k == K){
+    k.fold = hotels_val[last.fold,]
+  }else{
+    k.fold = hotels_val[fold.mat[,k],]
+  }
+  phat.val = predict(new.mod, k.fold)
+  yhat.val = ifelse(phat.val > th, 1, 0)
+  child.mat[k,1] = sum(yhat.val)
+  child.mat[k,2] = sum(k.fold$children)
+}
+temp.child = child.mat[,1]/child.mat[,2]
+temp.child = as.data.frame(temp.child)
+colnames(temp.child) = c('expected_vs_actual_ratio')
+ggplot(temp.child) +
+  geom_histogram(aes(x = expected_vs_actual_ratio, after_stat(density)),
+                binwidth = 0.2, fill = blues9[4])
+
+```
+
+***Figure 4.3**. On average, the number of bookings with children on a single busy weekend are underestimated by about 30%.*
+
+Figure 4.3 above shows that the forecasted number of bookings with children is biased as is consistently below the actual number. This result is surprising, since the probability threshold is less than 0.5, so one could assume that this would bias the forecast in the other direction, but could be a result of the actual number of bookings with children beeing too low. In any case, these results show the consequences of out-of-sample underperformance of the model.
